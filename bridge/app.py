@@ -1,0 +1,48 @@
+import os
+from pathlib import Path
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+
+app = FastAPI()
+
+
+class ChatRequest(BaseModel):
+    message: str
+    chat_id: str
+    user_id: str
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    generate_url = f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate"
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": req.message,
+        "stream": False,
+    }
+
+    try:
+        response = httpx.post(generate_url, json=payload, timeout=120)
+        response.raise_for_status()
+        data = response.json()
+        reply = data.get("response", "").strip()
+    except Exception as exc:
+        reply = f"Error contacting Ollama: {exc}"
+
+    return {
+        "text": reply or "I did not get a response from Ollama."
+    }
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
